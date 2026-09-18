@@ -12,6 +12,7 @@ export default function Table() {
     const [selectedId, setSelectedId] = useState('');
 
     useEffect(() => {
+        // if (isClick)
         fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2')
             .then(res => { return res.json() })
             .then(result => {
@@ -56,7 +57,7 @@ export default function Table() {
     };
 
     const handleCreate = () => {
-        fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2', {
+        fetch('https://671891927fc4c5ff8f49fcac.moSckapi.io/v2', {
             method: 'POST',
             headers: {
                 'Content-type': 'application/json'
@@ -115,6 +116,10 @@ export default function Table() {
             })
     }
 
+    const columns = data.length > 0
+        ? ['id', ...Object.keys(data[0]).filter((key) => key !== 'id')]
+        : [];
+
     return (
         <div className="table">
             <button onClick={handleClickTable} className='buttonTable'>{isClick ? 'Xóa bảng dữ liệu' : 'Xuất bảng dữ liệu'}</button>
@@ -127,7 +132,7 @@ export default function Table() {
                 <div className="createContainer">
                     <div className="create">
                         {Object.keys(data[0] || {}).map((key) => (
-                            <div className="formField" key={key}>
+                            <div div className="formField" key={key} >
                                 <label htmlFor={key}>{formatKey(key)}</label>
                                 <input id={key} type="text" placeholder={formatKey(key)} value={formData[key] || ''} onChange={handleChange} />
                             </div>
@@ -166,31 +171,42 @@ export default function Table() {
             {isClick && isLoading && <p>Đang tải dữ liệu...</p>}
             {isClick && error && <p>{error}</p>}
             {isClick && !isLoading && !error && data.length === 0 && <p>Không có dữ liệu.</p>}
-            {(isClick && !isLoading && !error && data.length > 0) && (
-                <table border={1} >
-                    <thead>
-                        <tr>
-                            {Object.keys(data[0]).map((key) => (
-                                <th key={key}>{key}</th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.map((item) => (
-                            <tr key={item.id}>
-                                {Object.keys(data[0]).map((key) => (
-                                    <td key={key}>
-                                        {(typeof item[key] === 'object') ?
-                                            JSON.stringify(item[key]) :
-                                            item[key]
-                                        }
-                                    </td>
+            {
+                (isClick && !isLoading && !error && data.length > 0) && (
+                    <table border={1} >
+                        <thead>
+                            <tr>
+                                {columns.map((key) => (
+                                    <th key={key}>{key}</th>
                                 ))}
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
-            )}
+                        </thead>
+                        <tbody>
+                            {data.map((item) => (
+                                <tr key={item.id}>
+                                    {columns.map((key) => (
+                                        (key == 'avatar') ?
+                                            <td key={key}>
+                                                <img src={item.avatar} alt="" className='imgAvt' />
+                                            </td>
+                                            : (key == 'color') ?
+                                                <td key={key}>
+                                                    <div style={{ backgroundColor: item.color, width: '50px', height: '50px' }}></div>
+                                                </td>
+                                                :
+                                                <td key={key}>
+                                                    {(typeof item[key] === 'object') ?
+                                                        JSON.stringify(item[key]) :
+                                                        item[key]
+                                                    }
+                                                </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )
+            }
         </div >
     )
 }
