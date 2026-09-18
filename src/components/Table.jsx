@@ -200,25 +200,25 @@ export default function Table() {
                         </thead>
                         <tbody>
                             {data.map((item) => (
-                                <tr key={item.id}>
+                                <tr key={item.id} style={{ backgroundColor: item.color }}>
                                     {columns.map((key) => (
                                         (key == 'avatar') ?
                                             <td key={key}>
                                                 <img src={item.avatar} alt="" className='imgAvt' />
                                             </td>
-                                            : (key == 'color') ?
-                                                <td key={key}>
-                                                    <div style={{ backgroundColor: item.color, width: '50px', height: '50px' }}></div>
-                                                </td>
-                                                :
-                                                <td key={key}>
-                                                    {key === 'createdAt' || key === 'updatedAt'
-                                                        ? formatDateTime(item[key])
-                                                        : typeof item[key] === 'object'
-                                                            ? JSON.stringify(item[key])
-                                                            : item[key]
-                                                    }
-                                                </td>
+                                            // : (key == 'color') ?
+                                            //     <td key={key}>
+                                            //         <div style={{ backgroundColor: item.color, width: '50px', height: '50px' }}></div>
+                                            //     </td>
+                                            :
+                                            <td key={key}>
+                                                {key === 'createdAt' || key === 'dob'
+                                                    ? formatDateTime(item[key])
+                                                    : typeof item[key] === 'object'
+                                                        ? JSON.stringify(item[key])
+                                                        : item[key]
+                                                }
+                                            </td>
                                     ))}
                                 </tr>
                             ))}
