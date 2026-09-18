@@ -3,7 +3,6 @@ import './Table.css'
 
 export default function Table() {
     const [data, setData] = useState([]);
-    const [isClick, setIsClick] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [isDisplay, setIsDisplay] = useState(false);
@@ -12,7 +11,6 @@ export default function Table() {
     const [selectedId, setSelectedId] = useState('');
 
     useEffect(() => {
-        // if (isClick)
         fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2')
             .then(res => { return res.json() })
             .then(result => {
@@ -28,10 +26,6 @@ export default function Table() {
                 setIsLoading(false);
             })
     }, [])
-
-    const handleClickTable = () => {
-        setIsClick(!isClick);
-    }
 
     const displayCreate = () => {
         setIsDisplay(!isDisplay);
@@ -57,7 +51,14 @@ export default function Table() {
     };
 
     const handleCreate = () => {
-        fetch('https://671891927fc4c5ff8f49fcac.moSckapi.io/v2', {
+        const missingFields = formFields.filter((key) => !String(formData[key] || '').trim());
+
+        if (missingFields.length > 0) {
+            alert(`Vui lòng nhập: ${missingFields.map(formatKey).join(', ')}`);
+            return;
+        }
+
+        fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2', {
             method: 'POST',
             headers: {
                 'Content-type': 'application/json'
@@ -120,9 +121,25 @@ export default function Table() {
         ? ['id', ...Object.keys(data[0]).filter((key) => key !== 'id')]
         : [];
 
+    const formatDateTime = (value) => {
+        const date = new Date(value);
+
+        return date.toLocaleString('vi-VN', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    };
+
+    const formFields = Object.keys(data[0] || {})
+        .filter((key) => !['id', 'createdAt', 'createDate'].includes(key));
+
     return (
         <div className="table">
-            <button onClick={handleClickTable} className='buttonTable'>{isClick ? 'Xóa bảng dữ liệu' : 'Xuất bảng dữ liệu'}</button>
+            {/* <button onClick={handleClickTable} className='buttonTable'>{isClick ? 'Xóa bảng dữ liệu' : 'Xuất bảng dữ liệu'}</button> */}
 
             <div className="buttonCRUD">
                 <button onClick={displayCreate} className='buttonCreate'>Tạo user</button>
@@ -131,10 +148,10 @@ export default function Table() {
             {isDisplay && (
                 <div className="createContainer">
                     <div className="create">
-                        {Object.keys(data[0] || {}).map((key) => (
-                            <div div className="formField" key={key} >
+                        {formFields.map((key) => (
+                            <div className="formField" key={key} >
                                 <label htmlFor={key}>{formatKey(key)}</label>
-                                <input id={key} type="text" placeholder={formatKey(key)} value={formData[key] || ''} onChange={handleChange} />
+                                <input id={key} type="text" placeholder={formatKey(key)} value={formData[key] || ''} onChange={handleChange} required />
                             </div>
                         ))}
                         <div className='interactForm'>
@@ -168,11 +185,11 @@ export default function Table() {
             )}
 
 
-            {isClick && isLoading && <p>Đang tải dữ liệu...</p>}
-            {isClick && error && <p>{error}</p>}
-            {isClick && !isLoading && !error && data.length === 0 && <p>Không có dữ liệu.</p>}
+            {isLoading && <p>Đang tải dữ liệu...</p>}
+            {/* {error && <p>{error}</p>} */}
+            {!isLoading && !error && data.length === 0 && <p>Không có dữ liệu.</p>}
             {
-                (isClick && !isLoading && !error && data.length > 0) && (
+                (!isLoading && !error && data.length > 0) && (
                     <table border={1} >
                         <thead>
                             <tr>
@@ -195,9 +212,11 @@ export default function Table() {
                                                 </td>
                                                 :
                                                 <td key={key}>
-                                                    {(typeof item[key] === 'object') ?
-                                                        JSON.stringify(item[key]) :
-                                                        item[key]
+                                                    {key === 'createdAt' || key === 'updatedAt'
+                                                        ? formatDateTime(item[key])
+                                                        : typeof item[key] === 'object'
+                                                            ? JSON.stringify(item[key])
+                                                            : item[key]
                                                     }
                                                 </td>
                                     ))}
