@@ -18,3 +18,15 @@ button {
   cursor: pointer;
   outline: inherit;
 }
+
+input {
+  border: 1px solid #000000; 
+  outline: none;
+  box-shadow: none;
+}
+
+input:focus {
+  outline: none;
+  box-shadow: none ;
+  border: 1px solid #000000;
+}

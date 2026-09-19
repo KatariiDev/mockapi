@@ -5,35 +5,49 @@ export default function Table() {
     const [data, setData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
-    const [isDisplay, setIsDisplay] = useState(false);
-    const [isDisplayDel, setIsDisplayDel] = useState(false);
     const [formData, setFormData] = useState({});
-    const [selectedId, setSelectedId] = useState('');
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [isSortASC, setIsSortASC] = useState(true);
 
     useEffect(() => {
-        fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2')
-            .then(res => { return res.json() })
-            .then(result => {
+        let isMounted = true;
+
+        const loadData = async () => {
+            try {
+                const response = await fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2')
+
+                if (!response.ok) {
+                    throw new Error('Không thể lấy dữ liệu');
+                }
+
+                const result = await response.json();
                 if (!Array.isArray(result)) {
                     throw new Error('Dữ liệu nhận được không phải là một mảng');
                 }
-                setData(result);
-            })
-            .catch(() => {
-                setError('Lỗi lấy dữ liệu');
-            })
-            .finally(() => {
-                setIsLoading(false);
-            })
+
+                if (isMounted) {
+                    setData(currentData => JSON.stringify(currentData) === JSON.stringify(result)
+                        ? currentData
+                        : result);
+                    setError('');
+                    setIsLoading(false);
+                }
+            } catch {
+                if (isMounted) {
+                    setError('Lỗi lấy dữ liệu');
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        loadData();
+        const refreshTimer = setInterval(loadData, 5000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(refreshTimer);
+        };
     }, [])
-
-    const displayCreate = () => {
-        setIsDisplay(!isDisplay);
-    }
-
-    const displayDel = () => {
-        setIsDisplayDel(!isDisplayDel);
-    }
 
     const formatKey = (key) => {
         return key
@@ -51,13 +65,6 @@ export default function Table() {
     };
 
     const handleCreate = () => {
-        const missingFields = formFields.filter((key) => !String(formData[key] || '').trim());
-
-        if (missingFields.length > 0) {
-            alert(`Vui lòng nhập: ${missingFields.map(formatKey).join(', ')}`);
-            return;
-        }
-
         fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2', {
             method: 'POST',
             headers: {
@@ -72,54 +79,61 @@ export default function Table() {
                 return res.json();
             })
             .then(newUser => {
-                console.log("newUser: " + newUser);
-
                 setData([...data, newUser]);
                 setFormData({});
                 alert("Thêm thành công!");
-                setIsDisplay(false)
             })
             .catch((e) => {
                 console.log(e)
             })
     }
 
-    const handleSelectId = (e) => {
-        setSelectedId(e.target.value);
+    const handleClickArrange = () => {
+        setIsSortASC(!isSortASC);
+        if (isSortASC) {
+            fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2', {
+                headers: 'PUT'
+            })
+        }
     }
 
-    const handleDelete = () => {
-        if (!selectedId) {
-            alert("Vui lòng chọn ID cần xóa");
+    const handleDelete = async () => {
+        if (selectedIds.length === 0) {
+            alert("Vui lòng chọn user cần xóa");
             return;
         }
 
-        const option = {
-            method: 'DELETE'
-        }
+        const idsToDelete = [...selectedIds];
+        const deletedIds = [];
 
-        fetch(`https://671891927fc4c5ff8f49fcac.mockapi.io/v2/${selectedId}`, option)
-            .then(res => {
-                if (!res.ok) {
+        for (const id of idsToDelete) {
+            try {
+                const response = await fetch(`https://671891927fc4c5ff8f49fcac.mockapi.io/v2/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
                     throw new Error('Không thể xóa user');
                 }
 
-                return res.json();
-            })
-            .then(() => {
-                setData(data.filter(item => item.id !== selectedId));
-                setSelectedId('');
-                alert("Xóa thành công!");
-                setIsDisplayDel(false);
-            })
-            .catch(error => {
-                console.log(error)
-            })
+                deletedIds.push(id);
+            } catch (error) {
+                console.log(error);
+            }
+        }
+
+        if (deletedIds.length > 0) {
+            setData(currentData => currentData.filter(item => !deletedIds.includes(String(item.id))));
+            setSelectedIds(currentIds => currentIds.filter(id => !deletedIds.includes(id)));
+            setFormData({});
+        }
+
+        alert("Xóa thành công " + deletedIds.length + (deletedIds.length === 1 ? " user!" : " users!"));
     }
 
-    const columns = data.length > 0
-        ? ['id', ...Object.keys(data[0]).filter((key) => key !== 'id')]
-        : [];
+    const columns = [...new Set(data.flatMap((item) => Object.keys(item)))]
+        .filter((key) => key !== 'id');
+    const displayColumns = ['id', ...columns];
 
     const formatDateTime = (value) => {
         const date = new Date(value);
@@ -134,56 +148,61 @@ export default function Table() {
         });
     };
 
-    const formFields = Object.keys(data[0] || {})
+    const formFields = displayColumns
         .filter((key) => !['id', 'createdAt', 'createDate'].includes(key));
+
+    const handleSelect = (id) => {
+        const normalizedId = String(id);
+        const nextSelectedIds = selectedIds.includes(normalizedId)
+            ? selectedIds.filter(selectedId => selectedId !== normalizedId)
+            : [...selectedIds, normalizedId];
+
+        setSelectedIds(nextSelectedIds);
+
+        if (nextSelectedIds.length !== 1) {
+            setFormData({});
+            return;
+        }
+
+        const selectedUser = data.find((item) => String(item.id) === nextSelectedIds[0]);
+        const selectedUserData = Object.fromEntries(
+            formFields.map((key) => [
+                key,
+                typeof selectedUser[key] === 'object' && selectedUser[key] !== null
+                    ? JSON.stringify(selectedUser[key])
+                    : selectedUser[key] ?? ''
+            ])
+        );
+
+        setFormData(selectedUserData);
+    };
 
     return (
         <div className="table">
-            {/* <button onClick={handleClickTable} className='buttonTable'>{isClick ? 'Xóa bảng dữ liệu' : 'Xuất bảng dữ liệu'}</button> */}
-
-            <div className="buttonCRUD">
-                <button onClick={displayCreate} className='buttonCreate'>Tạo user</button>
-                <button className="buttonDel" onClick={displayDel}>Xóa User</button>
+            <div className="utilSection">
+                <div className="tableMain">
+                    {formFields.map((key) => (
+                        <div className="formField" key={key} >
+                            <label htmlFor={key}>{formatKey(key)}</label>
+                            <input id={key} type="text" placeholder={formatKey(key)} value={formData[key] || ''} onChange={handleChange} />
+                        </div>
+                    ))}
+                </div>
+                <div className="buttonUtil">
+                    <button onClick={handleCreate} className='buttonCreate'>Tạo User</button>
+                    <button className="buttonDel" onClick={handleDelete}>Xóa User</button>
+                    <button className='buttonUpdate'>Cập nhật</button>
+                    <button className='buttonSort' onClick={handleClickArrange}>{(isSortASC) ? 'ID tăng dần' : 'ID giảm dần'}</button>
+                    <button className='buttonSearch'>Tìm User</button>
+                    {/*
+                        1. Cho phép select xóa
+                        2. button Update
+                        3. button sort ASC/DESC
+                        5. Search
+                        6. Pagination
+                    */}
+                </div>
             </div>
-            {isDisplay && (
-                <div className="createContainer">
-                    <div className="create">
-                        {formFields.map((key) => (
-                            <div className="formField" key={key} >
-                                <label htmlFor={key}>{formatKey(key)}</label>
-                                <input id={key} type="text" placeholder={formatKey(key)} value={formData[key] || ''} onChange={handleChange} required />
-                            </div>
-                        ))}
-                        <div className='interactForm'>
-                            <button className="backButton" onClick={() => setIsDisplay(false)}>Trở về</button>
-                            <button className="createButton" onClick={handleCreate}>Thêm</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isDisplayDel && (
-                <div className="delContainer">
-                    <div className="del">
-                        <div className="formDel">
-                            <label htmlFor="id">Chọn ID cần xóa</label>
-                            <select value={selectedId} onChange={handleSelectId}>
-                                <option value="">{('---Chọn ID cần xóa---')}</option>
-                                {data.map((item) => (
-                                    <option value={item.id} key={item.id}>
-                                        {('id: ' + item.id + ' - name: ' + item.name)}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className='interactForm'>
-                            <button className="backButton" onClick={() => setIsDisplayDel(false)}>Trở về</button>
-                            <button className="delButton" onClick={handleDelete}>Xác nhận xóa</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
 
             {isLoading && <p>Đang tải dữ liệu...</p>}
             {/* {error && <p>{error}</p>} */}
@@ -193,23 +212,28 @@ export default function Table() {
                     <table border={1} >
                         <thead>
                             <tr>
-                                {columns.map((key) => (
+                                <th>selected:{selectedIds.length}</th>
+                                {displayColumns.map((key) => (
                                     <th key={key}>{key}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {data.map((item) => (
-                                <tr key={item.id} style={{ backgroundColor: item.color }}>
-                                    {columns.map((key) => (
+                                <tr key={item.id} style={{ backgroundColor: item.color, color: '#393939' }}>
+                                    <td>
+                                        <input
+                                            type="checkbox"
+                                            // aria-label={`Chọn user ${item.id}`}
+                                            checked={selectedIds.includes(String(item.id))}
+                                            onChange={() => handleSelect(item.id)}
+                                        />
+                                    </td>
+                                    {displayColumns.map((key) => (
                                         (key == 'avatar') ?
                                             <td key={key}>
                                                 <img src={item.avatar} alt="" className='imgAvt' />
                                             </td>
-                                            // : (key == 'color') ?
-                                            //     <td key={key}>
-                                            //         <div style={{ backgroundColor: item.color, width: '50px', height: '50px' }}></div>
-                                            //     </td>
                                             :
                                             <td key={key}>
                                                 {key === 'createdAt' || key === 'dob'
