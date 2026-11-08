@@ -166,3 +166,124 @@ td {
         grid-template-columns: 1fr;
     }
 } */
+/* --- Infinite scroll + sort + search (thêm 08/11) --- */
+
+.searchBox {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.searchInput {
+    width: min(420px, 90vw);
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid rgb(146, 145, 145);
+}
+
+.statusBar {
+    font-size: 14px;
+    color: #555;
+}
+
+/* Tiêu đề cột sort được: bấm được, hiện ▲/▼ */
+.sortHeader {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.sortHeader:hover {
+    background-color: #eef6f3;
+}
+
+.buttonRefresh {
+    width: 100px;
+    height: 50px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid black;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    background-color: rgb(248, 248, 243);
+    transition: all 0.2s ease-in-out;
+}
+
+.buttonRefresh:active {
+    transform: scale(0.96);
+    opacity: 0.75;
+}
+
+/* Div "canh gác" cuối bảng: IntersectionObserver theo dõi nó */
+.sentinel {
+    display: flex;
+    justify-content: center;
+    padding: 16px 0;
+    min-height: 52px;
+}
+
+.sentinel button {
+    height: 40px;
+    padding: 0 20px;
+    border: 1px solid black;
+    border-radius: 10px;
+    background-color: rgb(248, 248, 243);
+    cursor: pointer;
+}
+
+.endMessage {
+    text-align: center;
+    color: #555;
+    padding: 12px 0;
+}
+
+/* --- Virtual scroll (thêm 08/11) --- */
+
+/* Khung cuộn của bảng: cao cố định 600px, cuộn trong này thay vì cuộn cả trang */
+.tableViewport {
+    height: 600px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border: 1px solid #ccc;
+}
+
+/* Tiêu đề dính ở đầu khung khi cuộn */
+.tableViewport thead th {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 2;
+}
+
+/* Hàng dữ liệu: cao cố định 72px (khớp ROW_HEIGHT trong Table.jsx).
+   Ô nào text dài cũng chỉ 1 dòng + "..." để hàng không bị đội cao. */
+.tableViewport tbody tr.dataRow {
+    height: 72px;
+}
+
+.tableViewport tbody tr.dataRow td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Hàng đệm: chỉ để giữ chiều cao, không padding/border để khỏi đội thêm */
+.tableViewport tbody tr.spacerRow td {
+    padding: 0;
+    border: none;
+    height: auto;
+}
+
+/* Gộp border để chiều cao hàng đúng 72px (không cộng thêm border-spacing) */
+.tableViewport table {
+    border-collapse: collapse;
+}
+
+/* Ảnh avatar là inline nên để lại khoảng trống baseline (~3px) dưới ảnh,
+   đội hàng lên 75px. Cho thành block để hàng đúng 72px như ROW_HEIGHT. */
+.tableViewport td img {
+    display: block;
+}

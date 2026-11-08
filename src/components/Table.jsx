@@ -1,53 +1,125 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './Table.css'
+
+const API_URL = 'https://671891927fc4c5ff8f49fcac.mockapi.io/v2';
+const PAGE_SIZE = 10;
+
+const ROW_HEIGHT = 72;
+const VIEWPORT_HEIGHT = 600;
+const OVERSCAN = 5;
+const SORTABLE_COLUMNS = ['id', 'name', 'createdAt'];
 
 export default function Table() {
     const [data, setData] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(true);       // đang tải trang đầu
+    const [isLoadingMore, setIsLoadingMore] = useState(false); // đang tải thêm khi lướt
     const [error, setError] = useState('');
     const [formData, setFormData] = useState({});
     const [selectedIds, setSelectedIds] = useState([]);
-    const [isSortASC, setIsSortASC] = useState(true);
+
+    const pageRef = useRef(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [searchInput, setSearchInput] = useState('');       // ô search gõ gì hiện nấy
+    const [debouncedSearch, setDebouncedSearch] = useState(''); // giá trị search thật sự đem đi fetch
+    const lastFetchedSearchRef = useRef(''); // search đã fetch lần cuối (để debounce không fetch trùng lúc mới mở trang)
+    const [sortBy, setSortBy] = useState('id');
+    const [sortOrder, setSortOrder] = useState('asc');
+    const sentinelRef = useRef(null); // div "canh gác" ở cuối bảng cho infinite scroll
+    const viewportRef = useRef(null); // khung cuộn của bảng (div.tableViewport)
+    const [scrollTop, setScrollTop] = useState(0); // vị trí cuộn trong khung
+
+    const resetToTop = () => {
+        viewportRef.current?.scrollTo(0, 0);
+        setScrollTop(0);
+    };
+    const handleScroll = (e) => setScrollTop(e.currentTarget.scrollTop);
+    const loadPage = useCallback(async (pageToLoad, {
+        reset = false,
+        search = debouncedSearch,
+        sort = sortBy,
+        order = sortOrder,
+    } = {}) => {
+        try {
+            const params = new URLSearchParams({
+                page: String(pageToLoad),
+                limit: String(PAGE_SIZE),
+                sortBy: sort,
+                order,
+            });
+            if (search.trim()) {
+                params.set('search', search.trim());
+            }
+
+            const response = await fetch(`${API_URL}?${params.toString()}`);
+            if (!response.ok) {
+                throw new Error('Không thể lấy dữ liệu');
+            }
+
+            const result = await response.json();
+            if (!Array.isArray(result)) {
+                throw new Error('Dữ liệu nhận được không phải là một mảng');
+            }
+
+            setData((currentData) => {
+                const merged = reset ? result : [...currentData, ...result];
+                // Khử trùng theo id: StrictMode ở dev chạy effect 2 lần,
+                // không có bước này thì 10 record đầu sẽ hiện 2 lần.
+                return [...new Map(merged.map((item) => [String(item.id), item])).values()];
+            });
+            setHasMore(result.length === PAGE_SIZE);
+            setError('');
+        } catch {
+            setError('Lỗi lấy dữ liệu');
+            if (reset) setHasMore(false);
+        } finally {
+            setIsLoading(false);
+            setIsLoadingMore(false);
+        }
+    }, [debouncedSearch, sortBy, sortOrder]);
 
     useEffect(() => {
-        let isMounted = true;
+        const timer = setTimeout(() => {
+            if (searchInput === lastFetchedSearchRef.current) return;
+            lastFetchedSearchRef.current = searchInput;
+            setDebouncedSearch(searchInput);
+            setIsLoading(true);
+            pageRef.current = 1;
+            resetToTop();
+            loadPage(1, { reset: true, search: searchInput });
+        }, 400);
+        return () => clearTimeout(timer);
+        // Chỉ chạy khi searchInput đổi; loadPage là hàm ổn định theo filter
+    }, [searchInput]);
 
-        const loadData = async () => {
-            try {
-                const response = await fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2')
+    // Mở trang: tải trang 1. isLoading đã là true từ useState(true) nên
+    // không cần set thêm trước fetch.
+    useEffect(() => {
+        loadPage(1, { reset: true });
+    }, []);
 
-                if (!response.ok) {
-                    throw new Error('Không thể lấy dữ liệu');
+    // Lướt xuống -> tải trang tiếp theo nối vào cuối.
+    const handleLoadMore = () => {
+        if (!hasMore || isLoading || isLoadingMore) return;
+        setIsLoadingMore(true);
+        pageRef.current += 1;
+        loadPage(pageRef.current, { reset: false });
+    };
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        const viewport = viewportRef.current;
+        if (!sentinel || !viewport) return;
+
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    handleLoadMore();
                 }
-
-                const result = await response.json();
-                if (!Array.isArray(result)) {
-                    throw new Error('Dữ liệu nhận được không phải là một mảng');
-                }
-
-                if (isMounted) {
-                    setData(currentData => JSON.stringify(currentData) === JSON.stringify(result)
-                        ? currentData
-                        : result);
-                    setError('');
-                    setIsLoading(false);
-                }
-            } catch {
-                if (isMounted) {
-                    setError('Lỗi lấy dữ liệu');
-                    setIsLoading(false);
-                }
-            }
-        };
-
-        loadData();
-        const refreshTimer = setInterval(loadData, 5000);
-
-        return () => {
-            isMounted = false;
-            clearInterval(refreshTimer);
-        };
-    }, [])
+            },
+            { root: viewport, rootMargin: '100px' }
+        );
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasMore, isLoading, isLoadingMore]);
 
     const formatKey = (key) => {
         return key
@@ -65,7 +137,7 @@ export default function Table() {
     };
 
     const handleCreate = () => {
-        fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2', {
+        fetch(API_URL, {
             method: 'POST',
             headers: {
                 'Content-type': 'application/json'
@@ -78,24 +150,44 @@ export default function Table() {
                 }
                 return res.json();
             })
-            .then(newUser => {
-                setData([...data, newUser]);
+            .then(() => {
                 setFormData({});
                 alert("Thêm thành công!");
+                // Tải lại trang 1 để user mới hiện đúng vị trí theo sort hiện tại
+                setIsLoading(true);
+                pageRef.current = 1;
+                resetToTop();
+                loadPage(1, { reset: true });
             })
             .catch((e) => {
                 console.log(e)
             })
     }
 
-    const handleClickArrange = () => {
-        setIsSortASC(!isSortASC);
-        if (isSortASC) {
-            fetch('https://671891927fc4c5ff8f49fcac.mockapi.io/v2', {
-                headers: 'PUT'
-            })
-        }
-    }
+    const handleSort = (key) => {
+        const nextSortBy = key;
+        const nextSortOrder = sortBy === key
+            ? (sortOrder === 'asc' ? 'desc' : 'asc')
+            : 'asc';
+        setSortBy(nextSortBy);
+        setSortOrder(nextSortOrder);
+        setIsLoading(true);
+        pageRef.current = 1;
+        resetToTop();
+        loadPage(1, { reset: true, sort: nextSortBy, order: nextSortOrder });
+    };
+
+    const sortIcon = (key) => {
+        if (sortBy !== key) return '';
+        return sortOrder === 'asc' ? ' ▲' : ' ▼';
+    };
+
+    const handleRefresh = () => {
+        setIsLoading(true);
+        pageRef.current = 1;
+        resetToTop();
+        loadPage(1, { reset: true });
+    };
 
     const handleDelete = async () => {
         if (selectedIds.length === 0) {
@@ -108,7 +200,7 @@ export default function Table() {
 
         for (const id of idsToDelete) {
             try {
-                const response = await fetch(`https://671891927fc4c5ff8f49fcac.mockapi.io/v2/${id}`, {
+                const response = await fetch(`${API_URL}/${id}`, {
                     method: 'DELETE'
                 });
 
@@ -177,6 +269,44 @@ export default function Table() {
         setFormData(selectedUserData);
     };
 
+    const handleUpdate = async () => {
+        if (selectedIds.length !== 1) {
+            alert('Chọn đúng 1 user cần cập nhật');
+            return;
+        }
+        const id = selectedIds[0];
+        try {
+            const response = await fetch(`${API_URL}/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
+            if (!response.ok) {
+                throw new Error('Không thể cập nhật user');
+            }
+            const updatedUser = await response.json();
+            // Đổi luôn trong list đang hiện, khỏi tải lại trang
+            setData((currentData) =>
+                currentData.map((item) =>
+                    String(item.id) === String(id) ? updatedUser : item
+                )
+            );
+            alert('Cập nhật thành công!');
+        } catch (error) {
+            console.log(error);
+            alert('Cập nhật thất bại, kiểm tra mạng rồi thử lại');
+        }
+    };
+
+    const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    const visibleCount = Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + OVERSCAN * 2;
+    const endIndex = Math.min(data.length, startIndex + visibleCount);
+    const visibleData = data.slice(startIndex, endIndex);
+    const topSpacerHeight = startIndex * ROW_HEIGHT;
+    const bottomSpacerHeight = (data.length - endIndex) * ROW_HEIGHT;
+
     return (
         <div className="table">
             <div className="utilSection">
@@ -192,62 +322,101 @@ export default function Table() {
                     <button onClick={handleCreate} className='buttonCreate'>Tạo User</button>
                     <button className="buttonDel" onClick={handleDelete}>Xóa User</button>
                     <button className='buttonUpdate'>Cập nhật</button>
-                    <button className='buttonSort' onClick={handleClickArrange}>{(isSortASC) ? 'ID tăng dần' : 'ID giảm dần'}</button>
-                    <button className='buttonSearch'>Tìm User</button>
-                    {/*
-                        1. Cho phép select xóa
-                        2. button Update
-                        3. button sort ASC/DESC
-                        5. Search
-                        6. Pagination
-                    */}
+                    <button className='buttonRefresh' onClick={handleRefresh}>Làm mới</button>
+                    <button className='buttonUpdate' onClick={handleUpdate}>Cập nhật</button>
+                </div>
+                <div className="searchBox">
+                    <input
+                        type="text"
+                        className="searchInput"
+                        placeholder="Tìm user theo tên, email, công ty..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                    />
                 </div>
             </div>
 
             {isLoading && <p>Đang tải dữ liệu...</p>}
-            {/* {error && <p>{error}</p>} */}
-            {!isLoading && !error && data.length === 0 && <p>Không có dữ liệu.</p>}
+            {error && !isLoading && (
+                <div>
+                    <p>{error}</p>
+                    <button onClick={handleRefresh}>Thử lại</button>
+                </div>
+            )}
+            {!isLoading && !error && data.length === 0 && <p>Không tìm thấy user nào.</p>}
             {
                 (!isLoading && !error && data.length > 0) && (
-                    <table border={1} >
-                        <thead>
-                            <tr>
-                                <th>selected:{selectedIds.length}</th>
-                                {displayColumns.map((key) => (
-                                    <th key={key}>{key}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.map((item) => (
-                                <tr key={item.id} style={{ backgroundColor: item.color, color: '#393939' }}>
-                                    <td>
-                                        <input
-                                            type="checkbox"
-                                            // aria-label={`Chọn user ${item.id}`}
-                                            checked={selectedIds.includes(String(item.id))}
-                                            onChange={() => handleSelect(item.id)}
-                                        />
-                                    </td>
+                    <div className="tableViewport" ref={viewportRef} onScroll={handleScroll}>
+                        <table border={1} >
+                            <thead>
+                                <tr>
+                                    <th>selected:{selectedIds.length}</th>
                                     {displayColumns.map((key) => (
-                                        (key == 'avatar') ?
-                                            <td key={key}>
-                                                <img src={item.avatar} alt="" className='imgAvt' />
-                                            </td>
-                                            :
-                                            <td key={key}>
-                                                {key === 'createdAt' || key === 'dob'
-                                                    ? formatDateTime(item[key])
-                                                    : typeof item[key] === 'object'
-                                                        ? JSON.stringify(item[key])
-                                                        : item[key]
-                                                }
-                                            </td>
+                                        SORTABLE_COLUMNS.includes(key) ? (
+                                            <th
+                                                key={key}
+                                                className="sortHeader"
+                                                onClick={() => handleSort(key)}
+                                                title="Bấm để đổi chiều sắp xếp"
+                                            >
+                                                {key}{sortIcon(key)}
+                                            </th>
+                                        ) : (
+                                            <th key={key}>{key}</th>
+                                        )
                                     ))}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {topSpacerHeight > 0 && (
+                                    <tr className="spacerRow" aria-hidden="true">
+                                        <td colSpan={displayColumns.length + 1} style={{ height: topSpacerHeight }} />
+                                    </tr>
+                                )}
+                                {visibleData.map((item) => (
+                                    <tr key={item.id} className="dataRow" style={{ backgroundColor: item.color, color: '#393939' }}>
+                                        <td>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.includes(String(item.id))}
+                                                onChange={() => handleSelect(item.id)}
+                                            />
+                                        </td>
+                                        {displayColumns.map((key) => (
+                                            (key == 'avatar') ?
+                                                <td key={key}>
+                                                    <img src={item.avatar} alt="" className='imgAvt' />
+                                                </td>
+                                                :
+                                                <td key={key}>
+                                                    {key === 'createdAt' || key === 'dob'
+                                                        ? formatDateTime(item[key])
+                                                        : typeof item[key] === 'object'
+                                                            ? JSON.stringify(item[key])
+                                                            : item[key]
+                                                    }
+                                                </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                                {bottomSpacerHeight > 0 && (
+                                    <tr className="spacerRow" aria-hidden="true">
+                                        <td colSpan={displayColumns.length + 1} style={{ height: bottomSpacerHeight }} />
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+
+                        {hasMore ? (
+                            <div ref={sentinelRef} className="sentinel">
+                                {isLoadingMore
+                                    ? <p>Đang tải thêm 10 user...</p>
+                                    : <button onClick={handleLoadMore}>Tải thêm</button>}
+                            </div>
+                        ) : (
+                            <p className="endMessage">Đã tải hết {data.length} user.</p>
+                        )}
+                    </div>
                 )
             }
         </div >
